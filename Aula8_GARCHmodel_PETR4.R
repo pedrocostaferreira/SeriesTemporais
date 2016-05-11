@@ -3,7 +3,15 @@
 ## Prof. Dr. Pedro Costa Ferreira
 ## pedro.guilherme@fgv.br
 
-## GARCH model - PETR4 stock
+
+## CRAN Task View: Empirical Finance
+## https://cran.r-project.org/web/views/Finance.html
+
+## Vignettes: rugarch package
+## https://cran.r-project.org/web/packages/rugarch/vignettes/Introduction_to_the_rugarch_package.pdf
+
+
+## GARCH and TARCH model - PETR4 stock
 
 
 install.packages("quantmod")
@@ -15,23 +23,21 @@ getSymbols('PETR4.SA',src='yahoo')
 head(PETR4.SA)
 tail(PETR4.SA)
 
-
 PETR4.SA.Close <- PETR4.SA$PETR4.SA.Close
 ts.plot(PETR4.SA.Close)
 
 # Calculando o retorno
 
-r_PETR4<- log(PETR4.SA.Close/lag(PETR4.SA.Close,k=1))
-str(r_PETR4)
-length(r_PETR4)
-
+r_PETR4 <- dailyReturn(PETR4.SA.Close,type = "log")
 ts.plot(r_PETR4)
 hist(r_PETR4,100)
 
+
 ## vamos encuntar um pouco a ST para termos uma informação mais relevante
 
-#ts.plot(window(r_PETR4,start = 2010-01-01,frequency = 365))
-r_PETR4_pos2010<-r_PETR4[739:2011]
+r_PETR4_pos2010 <- window(r_PETR4, start = "2010-01-01")
+ts.plot(r_PETR4_pos2010)
+        
 hist(r_PETR4_pos2010,100)
 
 max(r_PETR4_pos2010)
@@ -93,27 +99,118 @@ abline(h = mean(r_PETR4_pos2010),col=2, lwd=2)
 
 acf(r_PETR4_pos2010^2)
 
+#############################################################################################
+## --------------------- Modeling PETR4 return GARCH (1,1) ----------------------------
+#############################################################################################
 
-## --------------------- Modeling PETR4 return ----------------------------
+install.packages("rugarch")
+require(rugarch)
 
-install.packages("fGarch")
-require(fGarch)
+############################################
+#######     Estimação      ###############
+############################################
 
-fit<-garchFit(formula= r_PETR4_pos2010 ~ arma(1,0) + aparch(1,1), data=100*r_PETR4_pos2010, cond.dist = "norm",
-              include.mean = TRUE, trace=FALSE)
-summary(fit)
 
+garch11.spec = ugarchspec(mean.model = list(armaOrder = c(1,0),include.mean=TRUE), 
+                          variance.model = list(garchOrder = c(1,1), 
+                          model = "sGARCH"))
+
+garch.fit = ugarchfit(garch11.spec, data = r_PETR4_pos2010*100,fit.control=list(scale=TRUE), 
+                      distribution.model = "norm")
+print(garch.fit)
+
+coef(garch.fit)
+
+############################################
+####### Diagnóstico #######################
+############################################
+
+plot(garch.fit, which = "all")
+
+##############################################################
+####### plot in-sample and forecast 12-steps-ahead ############
+###############################################################
 
 # plot in-sample volatility estimates
 hist <- ts(r_PETR4_pos2010,start=c(2010,1,1),frequency = 252)
-resid <- ts(fit@fitted,start=c(2010,1,1),frequency = 252)
-ts.plot(hist,resid,col=c(2,1))
+fitted <- ts(garch.fit@fit$fitted.values,start=c(2010,1,1),frequency = 252)
+ts.plot(r_PETR4_pos2010,fitted,col=c("red","blue"))
 
 
-# forecast 12-steps-ahead
-require(stats)
-forecast <- predict(object = fit, h=12)
-forecast
+# Time Series Prediction (unconditional)
+previsao <- ugarchforecast(garch.fit,n.ahead = 12)
+plot(previsao,which = 1)
+
+# Sigma Prediction (unconditional)
+previsao <- ugarchforecast(garch.fit,n.ahead = 12)
+plot(previsao,which = 3)
+
+
+#############################################################################################
+## --------------------- Modeling PETR4 return TARCH (1,1) ----------------------------
+#############################################################################################
+
+install.packages("rugarch")
+require(rugarch)
+
+############################################
+#######     Estimação      ###############
+############################################
+
+
+tarch11.spec = ugarchspec(mean.model = list(armaOrder = c(1,0),include.mean=TRUE), 
+                          variance.model = list(garchOrder = c(1,1), model = "fGARCH",
+                                                submodel = "TGARCH"))
+
+tarch.fit = ugarchfit(tarch11.spec, data = r_PETR4_pos2010*100,fit.control=list(scale=TRUE), 
+                      distribution.model = "norm")
+print(tarch.fit)
+
+coef(tarch.fit)
+
+############################################
+####### Diagnóstico #######################
+############################################
+
+plot(tarch.fit, which = "all")
+
+
+##############################################################
+####### plot in-sample and forecast 12-steps-ahead ############
+###############################################################
+
+# plot in-sample volatility estimates
+hist <- ts(r_PETR4_pos2010,start=c(2010,1,1),frequency = 252)
+fitted <- ts(tarch.fit@fit$fitted.values,start=c(2010,1,1),frequency = 252)
+ts.plot(r_PETR4_pos2010,fitted,col=c("red","blue"))
+
+
+# Time Series Prediction (unconditional)
+previsao <- ugarchforecast(tarch.fit,n.ahead = 12)
+plot(previsao,which = 1)
+
+# Sigma Prediction (unconditional)
+previsao <- ugarchforecast(tarch.fit,n.ahead = 12)
+plot(previsao,which = 3)
+
+
+
+## ----------------------- Value at Risk ---------------
+
+VaR=quantile(tarch.fit,0.01)
+plot(VaR)
+
+carteira <-(VaR/100)*1000000
+plot(carteira)
+
+
+require(rmgarch)
+require(PerformanceAnalytics)
+
+# Obtain conditional Correlation..
+r1=rcor(tarch.fit, type="R")
+r1.z=zoo(r1[1,2,], order.by=time(tst))
+
 
 
 
