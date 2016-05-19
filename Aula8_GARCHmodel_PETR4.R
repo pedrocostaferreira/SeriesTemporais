@@ -204,13 +204,3 @@ carteira <-(VaR/100)*1000000
 plot(carteira)
 
 
-require(rmgarch)
-require(PerformanceAnalytics)
-
-# Obtain conditional Correlation..
-r1=rcor(tarch.fit, type="R")
-r1.z=zoo(r1[1,2,], order.by=time(tst))
-
-
-
-
