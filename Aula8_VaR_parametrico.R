@@ -33,8 +33,20 @@ h_t <- garch.fit@fit$coef[[3]] + garch.fit@fit$coef[[4]]*garch.fit@fit$residuals
 confidence <- 1.96
 volume<- 30000
 
-r_ast <- m_t - confidence*sqrt(h_t)
+r_asterisco <- m_t - confidence*sqrt(h_t)
 
 
-(BETS.paramVaR <- (r_ast/100)*volume)
+(VaR <- (r_asterisco/100)*volume)
+
+
+####################################################################################################
+###################################################################################################
+############### VaR paramétrico usando o BETS #####################################################
+
+require(devtools)
+install_github("pedrocostaferreira/BETS",force = TRUE)
+require(BETS)
+
+BETS.param_var(garch.fit,30000,conf.level=0.95)
+
 
