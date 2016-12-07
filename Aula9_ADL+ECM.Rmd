@@ -1,0 +1,110 @@
+---
+title: "ADL+ECM"
+author: "Pedro Costa Ferreira"
+date: "December 7, 2016"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Este é um exemplo extraído do capítulo 8 - Regressão Dinâmica - do livro Análise de Séries Temporais em R: um curso introdutório.
+
+Antes de começarmos a pensar o nosso modelo ADL, vamos limpar o R environment e definir a nossa pasta de trabalho.
+
+```{r set working directory}
+rm(list=ls())
+setwd("C:\\Users\\pedro.guilherme\\Dropbox\\08 Cursos Pedro Costa Ferreira\\05 Big Data e Data Science\\01 Aula 8 - Séries Temporais\\Regressão Dinâmica + ECM")
+```
+
+# Autoregressive Distributed Lag Models (ADL)
+
+### Aplicação à expectativa de inflação dos consumidores
+
+```{r import data}
+aux_dados = read.csv2("Exp_Cons.csv")
+require(xts)
+dados = xts(aux_dados[,-1], order.by = seq(as.Date(aux_dados[1,1]), as.Date(aux_dados[nrow(aux_dados),1]), by = "month"), frequency = 12)
+
+IPCA <- ts(dados$IPCA,start = c(2005,9),frequency = 12)
+Exp_Cons <- ts(dados$Exp_Cons,start = c(2005,9),frequency = 12)
+preco <- cbind(IPCA, Exp_Cons)
+require(dygraphs)
+dygraph(preco)
+
+```
+
+
+
+
+Desde 2005, o Instituto Brasileiro de Economia (FGV$\backslash$IBRE) inclui na Sondagem do Consumidor uma pergunta quantitativa sobre a expectativa de inflação individual para os próximos 12 meses. 
+
+Pretendemos estimar um modelo de correção de erro baseado no procedimento de Engle-Granger, com a expectativa de inflação sendo explicada pelo Índice de Preços ao Consumidor Amplo (IPCA - IBGE). Para tal, devemos executar as três etapas abaixo:
+
+    - Estimar o modelo $Y_t = \phi X_t + \epsilon_t$;
+    - A partir dessas estimativas obter os resíduos $\hat{\epsilon}_t = Y_t - \hat{\phi} X_t$;
+    - Estimar o modelo $\Delta Y_t = \beta_0 + \beta_1 \Delta X_t + \gamma \hat{\epsilon}_{t-1} + \nu_t$.
+
+
+O primeiro passo de nossa análise contempla o teste de estacionariedade das variáveis em questão. A literatura dispõe de diversos testes, entretanto somente realizaremos o teste de Dickey-Fuller Aumentado (ADF). 
+
+Iniciaremos os testes de estacionariedade com a expectativa de inflação. A seguir temos os resultados do teste ADF aplicado a essa variável, assumindo defasagem máxima igual a 12 e adotando o AIC como critério de escolha da defasagem. O teste retornou defasagem igual a 1 e estatística 0,5713. Como a estatística de teste é maior que o valor crítico ao nível de 5\% de confiança, a saber -1,95, aceitamos a hipótese nula e, portanto, a variável em questão não é estacionária. 
+
+```{r Teste de RU}
+require(urca)
+adf_expinf <- ur.df(dados[,1], type = "none", lags = 13, selectlags = "AIC")
+summary(adf_expinf) 
+```
+
+Para avaliar se o teste ADF foi conduzido corretamente, vamos analizar a presença de autocorrelação nos resíduos do modelo utilizado pelo teste e a consequente necessidade de inclusão de mais defasagens no modelo. Como podemos observar, não existe autocorrelação significativa de nenhuma ordem e o teste parece correto.
+
+```{r Teste de RU - Expectativa de Inflação}
+require(BETS)
+BETS.corrgram(adf_expinf@res)
+```
+
+Passaremos à análise do IPCA. A seguir apresentamos os resultados do teste ADF e a correspondente função de autocorrelação dos resíduos do teste. Novamente assumimos defasagem máxima igual a 12 e seleção do lag via AIC. 
+
+
+```{r Teste de RU - IPCA, echo=TRUE}
+adf_ipca <- ur.df(dados[,2], type = "none", lags = 12, selectlags = "AIC")
+summary(adf_ipca) 
+BETS.corrgram(adf_ipca@res)
+```
+
+O teste retornou o modelo com apenas uma defasagem como o de menor AIC e estatística de teste (0,1185) que nos leva à conclusão de não rejeição da hipótese nula, ou seja, a variável IPCA não é estacionária. Corroborando os resultados encontrados, a função de autocorrelação dos resíduos não fornece indícios de incorreção do teste, visto que a autocorrelação não é significativa para nenhuma ordem.  
+
+Tendo concluído pela não estacionaridade das variáveis em estudo, os modelos clássicos de regressão linear não podem ser empregados. O próximo passo é, então, verificar se as variáveis são cointegradas. Esse teste avaliará se os resíduos da regressão ExpInf_t  = alpha + beta IPCA_t + epsilon_t são estacionários via teste ADF. 
+
+```{r Expectativa de Inflação x IPCA}
+ajuste_coin1 <- lm(dados[,1] ~ dados[,2] - 1)
+summary(ajuste_coin1)
+adf_coin1 <- ur.df(as.numeric(ajuste_coin1$residuals), "none", lags = 12, selectlags = "AIC")
+summary(adf_coin1)
+BETS.corrgram(adf_coin1@res)
+```
+
+A análise da estatística do teste ADF (-2,8666) nos leva à rejeição da hipótese nula e os resíduos do teste não apresentam autocorrelação significativa. Portanto, concluímos que as variáveis são cointegradas. Assim, podemos estimar o modelo de correção de erro para encontrar as relações de longo e curto prazo entre elas.
+
+
+
+```{r Procedimento em duas etapas - etapa 1}
+require(dynlm)
+
+reg1 = lm(dados[,1] ~ dados[,2] - 1)
+summary(reg1)
+```
+
+```{r Procedimento em duas etapas - etapa 2}
+exp_ipca <- ts(dados[,1],start = c(2005,09), freq = 12)
+ipca <- ts(dados[,2],start = c(2005,09), freq = 12)
+res <- ts(reg1$residuals, start = c(2005,09), freq = 12)
+
+reg2 = dynlm(d(exp_ipca, 1) ~ d(ipca, 1) + L(res, 1) -1)
+summary(reg2)
+```
+
+
