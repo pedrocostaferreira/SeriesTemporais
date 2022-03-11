@@ -1,5 +1,6 @@
 
 setwd("C:\\Users\\pedro.guilherme\\Dropbox\\08 Cursos Pedro Costa Ferreira\\04 Macroeconometria usando R\\03 Estudos de caso\\Existe relação entre inflação e crescimento")
+setwd("your workplace")
 
 ## O que queremos testar: inflação causa crescimento?!
 ## É possível gerar crescimento econômico gerando inflação?! Ou seja, inflação hoje causa crescimento no longo prazo?!
