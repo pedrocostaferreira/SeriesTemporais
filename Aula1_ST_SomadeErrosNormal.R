@@ -15,6 +15,7 @@ soma_erros<-function(N,sigma){
    return(R)
 }
 
+## teste teste teste
 
 ## Em seguida, vamos gerar 1000 informações com variância 1 e, em seguida, plotar a ST gerada a partir
 ## da equação de soma dos erros.
